@@ -1,0 +1,145 @@
+import java.io.*;
+import java.util.*;
+
+public class PassOneAssembler {
+    static Map<String, Integer> symbolTable = new HashMap<>();
+    static Map<String, Integer> literalTable = new LinkedHashMap<>();
+    static List<Integer> poolTable = new ArrayList<>();
+    static List<String> intermediateCode = new ArrayList<>();
+    static Map<String, String> opcodeTable = new HashMap<>();
+    static Set<String> directives = new HashSet<>(Arrays.asList("START", "END", "ORIGIN", "EQU", "LTORG"));
+
+    static int locationCounter = 0;
+
+    public static void main(String[] args) {
+        initializeOpcodes();
+
+        try (BufferedReader reader = new BufferedReader(new FileReader("source.asm"))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                processLine(line);
+            }
+        } catch (IOException e) {
+            System.err.println("Error reading source file: " + e.getMessage());
+            return;
+        }
+
+        assignLiterals(); // Final literal assignment at END
+
+        writeTablesToFiles();
+    }
+
+    static void initializeOpcodes() {
+        opcodeTable.put("MOVER", "01");
+        opcodeTable.put("ADD", "02");
+        opcodeTable.put("SUB", "03");
+        opcodeTable.put("MULT", "04");
+        opcodeTable.put("DIV", "05");
+    }
+
+    static void processLine(String line) {
+        String[] tokens = line.trim().split("[ ,]+");
+
+        if (tokens[0].equals("START")) {
+            locationCounter = Integer.parseInt(tokens[1]);
+            intermediateCode.add("(AD,01) (C," + tokens[1] + ")");
+            return;
+        }
+
+        if (tokens[0].equals("END")) {
+            intermediateCode.add("(AD,02)");
+            return;
+        }
+
+        if (tokens[0].equals("LTORG")) {
+            intermediateCode.add("(AD,03)");
+            assignLiterals();
+            poolTable.add(locationCounter);
+            return;
+        }
+
+        if (tokens.length >= 3 && tokens[1].equals("EQU")) {
+            symbolTable.put(tokens[0], Integer.parseInt(tokens[2]));
+            intermediateCode.add("(AD,04) " + tokens[0] + " = " + tokens[2]);
+            return;
+        }
+
+        int index = 0;
+
+        if (!opcodeTable.containsKey(tokens[0]) && !directives.contains(tokens[0])) {
+            symbolTable.put(tokens[0], locationCounter);
+            index++;
+        }
+
+        String mnemonic = tokens[index];
+        String opcode = opcodeTable.get(mnemonic);
+        if (opcode == null) {
+            System.err.println("Error: Unknown instruction '" + mnemonic + "'");
+            return;
+        }
+
+        String reg = tokens[index + 1];
+        String operand = tokens[index + 2];
+
+        String operandField;
+        if (operand.startsWith("='")) {
+            if (!literalTable.containsKey(operand)) {
+                literalTable.put(operand, -1);
+            }
+            operandField = "(L," + getLiteralIndex(operand) + ")";
+        } else {
+            symbolTable.putIfAbsent(operand, -1);
+            operandField = "(S," + operand + ")";
+        }
+
+        intermediateCode.add("(IS," + opcode + ") (R," + reg + ") " + operandField);
+        locationCounter++;
+    }
+
+    static void assignLiterals() {
+        for (Map.Entry<String, Integer> entry : literalTable.entrySet()) {
+            if (entry.getValue() == -1) {
+                literalTable.put(entry.getKey(), locationCounter++);
+            }
+        }
+    }
+
+    static int getLiteralIndex(String literal) {
+        int i = 0;
+        for (String key : literalTable.keySet()) {
+            if (key.equals(literal)) return i;
+            i++;
+        }
+        return -1;
+    }
+
+    static void writeTablesToFiles() {
+        try (PrintWriter symOut = new PrintWriter("symbol_table.txt");
+             PrintWriter litOut = new PrintWriter("literal_table.txt");
+             PrintWriter poolOut = new PrintWriter("pool_table.txt");
+             PrintWriter icOut = new PrintWriter("intermediate_code.txt")) {
+
+            symOut.println("Symbol Table:");
+            symbolTable.forEach((k, v) -> symOut.println(k + " -> " + v));
+
+            litOut.println("Literal Table:");
+            int i = 0;
+            for (Map.Entry<String, Integer> entry : literalTable.entrySet()) {
+                litOut.println(i++ + ": " + entry.getKey() + " -> " + entry.getValue());
+            }
+
+            poolOut.println("Pool Table:");
+            for (int j = 0; j < poolTable.size(); j++) {
+                poolOut.println("#" + j + ": " + poolTable.get(j));
+            }
+
+            icOut.println("Intermediate Code:");
+            intermediateCode.forEach(icOut::println);
+
+            System.out.println("✅ Output written to files successfully.");
+
+        } catch (IOException e) {
+            System.err.println("Error writing output files: " + e.getMessage());
+        }
+    }
+}
