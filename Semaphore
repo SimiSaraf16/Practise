@@ -1,0 +1,75 @@
+#include <iostream>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
+#include <vector>
+using namespace std;
+
+int N;
+vector<int> buffer;
+
+sem_t sem_empty, sem_full;
+pthread_mutex_t mutex;
+
+void* producer(void* arg) {
+    int item = 1;
+    while (true) {
+        sem_wait(&sem_empty);
+        pthread_mutex_lock(&mutex);
+
+        buffer.push_back(item);
+        cout << "Produced: " << item << endl;
+        item++;
+
+        pthread_mutex_unlock(&mutex);
+        sem_post(&sem_full);
+
+        sleep(1);
+    }
+    return NULL;
+}
+
+void* consumer(void* arg) {
+    while (true) {
+        sem_wait(&sem_full);
+        pthread_mutex_lock(&mutex);
+
+        int item = buffer.back();
+        buffer.pop_back();
+        cout << "Consumed: " << item << endl;
+
+        pthread_mutex_unlock(&mutex);
+        sem_post(&sem_empty);
+
+        sleep(1);
+    }
+    return NULL;
+}
+
+int main() {
+    cout << "Enter buffer size: ";
+    cin >> N;
+
+    if (N <= 0) {
+        cout << "Invalid buffer size!" << endl;
+        return 1;
+    }
+
+    pthread_t prod, cons;
+
+    sem_init(&sem_empty, 0, N);
+    sem_init(&sem_full, 0, 0);
+    pthread_mutex_init(&mutex, NULL);
+
+    pthread_create(&prod, NULL, producer, NULL);
+    pthread_create(&cons, NULL, consumer, NULL);
+
+    pthread_join(prod, NULL);
+    pthread_join(cons, NULL);
+
+    sem_destroy(&sem_empty);
+    sem_destroy(&sem_full);
+    pthread_mutex_destroy(&mutex);
+
+    return 0;
+}
