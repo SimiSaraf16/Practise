@@ -1,0 +1,145 @@
+#include <iostream>
+#include <vector>
+#include <limits>
+#include<bits/stdc++.h>
+using namespace std;
+
+struct Block{
+    int size;
+    bool isAllocated;
+};
+
+void resetBlock(vector<Block>&blocks,vector<int>& originalSizes){
+    for(size_t i=0;i<blocks.size();i++){
+        blocks[i].size=originalSizes[i];
+        blocks[i].isAllocated=false;
+
+    }
+}
+
+
+void FirstFit(vector<Block>blocks,vector<int>processes){
+    cout<<"------First Fit---------"<<endl;
+    for(size_t i=0;i<processes.size();i++){
+        bool allocated=false;
+        for(size_t j=0;j<blocks.size();j++){
+            if(!blocks[j].isAllocated && blocks[j].size>=processes[i]){
+                cout << "Process " << i + 1 << " of size " << processes[i] << " allocated to block " << j + 1 << "\n";
+                blocks[j].isAllocated = true;
+                allocated = true;
+                break;
+            }
+        }
+                if (!allocated)
+            cout << "Process " << i + 1 << " of size " << processes[i] << " not allocated\n";
+
+    }
+}
+
+void BestFit(vector<Block>blocks,vector<int>processes){
+    cout<<"---------Best Fit--------"<<endl;
+    for(size_t i=0;i<processes.size();i++){
+        int bestidx=-1;
+        int minwaste=INT_MAX;
+
+        for(size_t j=0;j<blocks.size();j++){
+            if(!blocks[j].isAllocated && blocks[j].size>=processes[i]){
+                int waste=blocks[j].size-processes[i];
+                if(waste<minwaste){
+                    minwaste=waste;
+                    bestidx=j;
+                }
+            }
+        }
+        if (bestidx != -1) {
+            cout << "Process " << i + 1 << " of size " << processes[i] << " allocated to block " << bestidx + 1 << "\n";
+            blocks[bestidx].isAllocated = true;
+        } else {
+            cout << "Process " << i + 1 << " of size " << processes[i] << " not allocated\n";
+        }
+    }
+}
+
+
+void WorstFit(vector<Block>blocks,vector<int>processes){
+    cout<<"-----Worst Fit-------"<<endl;
+    for(size_t i=0;i<processes.size();i++){
+        int worstidx=-1;
+        int maxwaste=-1;
+        for(size_t j=0;j<blocks.size();j++){
+            if(!blocks[j].isAllocated && blocks[j].size>=processes[i]){
+                int waste=blocks[j].size-processes[i];
+                if(waste>maxwaste){
+                    maxwaste=waste;
+                    worstidx=j;
+                }
+            }
+        }
+         if (worstidx != -1) {
+            cout << "Process " << i + 1 << " of size " << processes[i] << " allocated to block " << worstidx + 1 << "\n";
+            blocks[worstidx].isAllocated = true;
+        } else {
+            cout << "Process " << i + 1 << " of size " << processes[i] << " not allocated\n";
+        }
+    }
+}
+
+void NextFit(vector<Block>blocks,vector<int>processes){
+    cout<<"--------Next Fit---------"<<endl;
+    size_t lastidx=-1;
+    for(size_t i=0;i<processes.size();i++){
+        bool allocated=false;
+        size_t count=0;
+        size_t j=lastidx;
+        while(count<blocks.size()){
+            if(!blocks[j].isAllocated && blocks[j].size>=processes[i]){
+                cout << "Process " << i + 1 << " of size " << processes[i] << " allocated to block " << j + 1 << "\n";
+                blocks[j].isAllocated = true;
+                allocated = true;
+                lastidx = (j + 1) % blocks.size();
+                break;
+            }
+            j=(j+1)%blocks.size();
+            count++;
+        }
+        if (!allocated)
+            cout << "Process " << i + 1 << " of size " << processes[i] << " not allocated\n";
+    }
+}
+int main() {
+    int numBlocks, numProcesses;
+
+    cout << "Enter number of memory blocks: ";
+    cin >> numBlocks;
+    vector<Block> blocks(numBlocks);
+    vector<int> originalSizes(numBlocks);
+
+    cout << "Enter sizes of memory blocks:\n";
+    for (int i = 0; i < numBlocks; ++i) {
+        cin >> blocks[i].size;
+        originalSizes[i] = blocks[i].size;
+        blocks[i].isAllocated = false;
+    }
+
+    cout << "Enter number of processes: ";
+    cin >> numProcesses;
+    vector<int> processes(numProcesses);
+    cout << "Enter sizes of processes:\n";
+    for (int i = 0; i < numProcesses; ++i) {
+        cin >> processes[i];
+    }
+
+    // Run all strategies
+    FirstFit(blocks, processes);
+    resetBlock(blocks, originalSizes);
+
+    BestFit(blocks, processes);
+    resetBlock(blocks, originalSizes);
+
+    WorstFit(blocks, processes);
+    resetBlock(blocks, originalSizes);
+
+    NextFit(blocks, processes);
+
+    return 0;
+}
