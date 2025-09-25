@@ -1,0 +1,212 @@
+import java.io.*;
+import java.util.*;
+
+public class Pass2Assembler {
+    public static void main(String[] args) {
+        try {
+            // Open files
+            BufferedReader icReader = new BufferedReader(new FileReader("IC.txt"));
+            BufferedReader symReader = new BufferedReader(new FileReader("SYMTAB.txt"));
+            BufferedReader litReader = new BufferedReader(new FileReader("LITTAB.txt"));
+            BufferedWriter mcWriter = new BufferedWriter(new FileWriter("MACHINE_CODE.txt"));
+
+            // Load Symbol Table: index -> address
+            Map<Integer, Integer> symtab = new HashMap<>();
+            int symIndex = 1;
+            String line;
+            while ((line = symReader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                String[] parts = line.split("\\s+");
+                if (parts.length >= 2) {
+                    int addr = Integer.parseInt(parts[1]);
+                    symtab.put(symIndex++, addr);
+                } else if (parts.length == 1) {
+                    int addr = Integer.parseInt(parts[0]);
+                    symtab.put(symIndex++, addr);
+                }
+            }
+            symReader.close();
+
+            // Load Literal Table: index -> address
+            Map<Integer, Integer> littab = new HashMap<>();
+            int litIndex = 1;
+            while ((line = litReader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                String[] parts = line.split("\\s+");
+                if (parts.length >= 2) {
+                    int addr = Integer.parseInt(parts[1]);
+                    littab.put(litIndex++, addr);
+                } else if (parts.length == 1) {
+                    int addr = Integer.parseInt(parts[0]);
+                    littab.put(litIndex++, addr);
+                }
+            }
+            litReader.close();
+
+            int LC = 0;
+            boolean firstLineProcessed = false;
+
+            // Process each line in IC
+            while ((line = icReader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+
+                String[] tokens = line.split("\\s+");
+                String firstToken = tokens[0]; // e.g., (AD,01)
+                String classCode = extractClassCode(firstToken);
+                String opcode = extractOpcode(firstToken);
+
+                String op1 = tokens.length > 1 ? tokens[1] : null;
+                String op2 = tokens.length > 2 ? tokens[2] : null;
+
+                if (classCode.equals("AD")) {
+                    // Assembler directives - no machine code generated
+                    mcWriter.write("----- NO MC ------\n");
+
+                    // Handle START directive
+                    if (opcode.equals("01")) { // START
+                        if (op1 != null && op1.startsWith("(C,")) {
+                            LC = Integer.parseInt(op1.substring(3, op1.length() - 1));
+                            firstLineProcessed = true;
+                        }
+                    }
+                    // Handle ORIGIN directive
+                    else if (opcode.equals("03")) { // ORIGIN
+                        if (op1 != null) {
+                            int symIdxVal = 0;
+                            int offset = 0;
+                            String operandStr = op1;
+
+                            int plusPos = operandStr.indexOf('+');
+                            int minusPos = operandStr.indexOf('-');
+
+                            if (plusPos != -1) {
+                                String symPart = operandStr.substring(0, plusPos);
+                                symIdxVal = Integer.parseInt(symPart.substring(3, symPart.length() - 1));
+                                offset = Integer.parseInt(operandStr.substring(plusPos + 1));
+                            } else if (minusPos != -1) {
+                                String symPart = operandStr.substring(0, minusPos);
+                                symIdxVal = Integer.parseInt(symPart.substring(3, symPart.length() - 1));
+                                offset = -Integer.parseInt(operandStr.substring(minusPos + 1));
+                            } else {
+                                symIdxVal = Integer.parseInt(operandStr.substring(3, operandStr.length() - 1));
+                                offset = 0;
+                            }
+
+                            if (symtab.containsKey(symIdxVal)) {
+                                LC = symtab.get(symIdxVal) + offset;
+                                firstLineProcessed = true;
+                            } else {
+                                System.err.println("SYMTAB index " + symIdxVal + " not found for ORIGIN");
+                            }
+                        }
+                    }
+                    // No LC increment for AD lines
+                    continue;
+                }
+
+                // If no START/ORIGIN before IS/DL lines, default LC=0
+                if (!firstLineProcessed) {
+                    LC = 0;
+                    firstLineProcessed = true;
+                }
+
+                if (classCode.equals("DL")) {
+                    if (opcode.equals("01")) { // DC
+                        int constant = 0;
+                        if (op1 != null && op1.startsWith("(C,")) {
+                            constant = Integer.parseInt(op1.substring(3, op1.length() - 1));
+                        }
+                        String constStr = String.format("%03d", constant);
+                        mcWriter.write(LC + ") 00 0 " + constStr + "\n");
+                        LC += constant;
+                    } else if (opcode.equals("02")) { // DS
+                        mcWriter.write(LC + ") ----- NO MC ------\n");
+                        int size = 1;
+                        if (op1 != null && op1.startsWith("(C,")) {
+                            size = Integer.parseInt(op1.substring(3, op1.length() - 1));
+                        }
+                        LC += size;
+                    }
+                    continue;
+                }
+
+                if (classCode.equals("IS")) {
+                    String opCodeMC = opcode;
+                    String op1MC = "0";
+                    String op2MC = "0";
+
+                    if (op1 != null) {
+                        if (op1.matches("\\(\\d+\\)")) {
+                            op1MC = op1.substring(1, op1.length() - 1);
+                        } else if (op1.startsWith("(S,")) {
+                            op1MC = "0"; // operand1 symbol: 0 in op1, address in op2 if present
+                        } else if (op1.startsWith("(L,")) {
+                            op1MC = "0"; // operand1 literal
+                        } else if (op1.startsWith("(C,")) {
+                            op1MC = "0"; // operand1 constant
+                        }
+                    }
+
+                    if (op2 != null) {
+                        if (op2.startsWith("(S,")) {
+                            int symIdx = Integer.parseInt(op2.substring(3, op2.length() - 1));
+                            op2MC = symtab.getOrDefault(symIdx, 0).toString();
+                        } else if (op2.startsWith("(L,")) {
+                            int litIdx = Integer.parseInt(op2.substring(3, op2.length() - 1));
+                            op2MC = littab.getOrDefault(litIdx, 0).toString();
+                        } else if (op2.matches("\\(\\d+\\)")) {
+                            op2MC = op2.substring(1, op2.length() - 1);
+                        } else if (op2.startsWith("(C,")) {
+                            int val = Integer.parseInt(op2.substring(3, op2.length() - 1));
+                            op2MC = String.format("%03d", val);
+                        }
+                    } else {
+                        // if no operand2 but operand1 is symbol or literal, print address in op2, 0 in op1
+                        if (op1 != null && op1.startsWith("(S,")) {
+                            int symIdx = Integer.parseInt(op1.substring(3, op1.length() - 1));
+                            op2MC = symtab.getOrDefault(symIdx, 0).toString();
+                            op1MC = "0";
+                        } else if (op1 != null && op1.startsWith("(L,")) {
+                            int litIdx = Integer.parseInt(op1.substring(3, op1.length() - 1));
+                            op2MC = littab.getOrDefault(litIdx, 0).toString();
+                            op1MC = "0";
+                        }
+                    }
+
+                    if (opcode.equals("00")) { // STOP instruction
+                        mcWriter.write(LC + ") 00 0 000\n");
+                    } else {
+                        mcWriter.write(LC + ") " + opCodeMC + " " + op1MC + " " + op2MC + "\n");
+                    }
+                    LC++;
+                    continue;
+                }
+
+                // If line does not match known classes, ignore or handle as needed
+            }
+
+            mcWriter.close();
+            icReader.close();
+            System.out.println("Pass 2 Assembly complete. Output in MACHINE_CODE.txt");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Helper to extract class code like AD, IS, DL from (AD,01)
+    private static String extractClassCode(String token) {
+        int commaIndex = token.indexOf(',');
+        return token.substring(1, commaIndex);
+    }
+
+    // Helper to extract opcode like 01, 04, 10 from (AD,01)
+    private static String extractOpcode(String token) {
+        int commaIndex = token.indexOf(',');
+        int endIndex = token.indexOf(')');
+        return token.substring(commaIndex + 1, endIndex);
+    }
+}
