@@ -1,0 +1,96 @@
+import java.io.*;
+import java.util.*;
+
+public class MacroP2 {
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader mntReader = new BufferedReader(new FileReader("mnt.txt"));
+        BufferedReader mdtReader = new BufferedReader(new FileReader("mdt.txt"));
+        BufferedReader kpdtReader = new BufferedReader(new FileReader("kpdt.txt"));
+        BufferedReader macroCallsReader = new BufferedReader(new FileReader("macro_calls.asm"));
+        FileWriter outputWriter = new FileWriter("macro_output.asm");
+
+        Map<String, String[]> mntMap = new HashMap<>();
+        String line;
+        while ((line = mntReader.readLine()) != null) {
+            String[] parts = line.trim().split("\\s+");
+            mntMap.put(parts[0], parts); 
+        }
+
+        List<String> mdt = new ArrayList<>();
+        while ((line = mdtReader.readLine()) != null) {
+            mdt.add(line);
+        }
+
+        List<String[]> kpdt = new ArrayList<>();
+        while ((line = kpdtReader.readLine()) != null) {
+            kpdt.add(line.trim().split("\\s+")); 
+        }
+
+        while ((line = macroCallsReader.readLine()) != null) {
+            line = line.trim();
+            if (line.isEmpty()) continue;
+
+            String[] tokens = line.split("[\\s,]+"); 
+            String macroName = tokens[0];
+
+            if (mntMap.containsKey(macroName)) {
+                String[] mntEntry = mntMap.get(macroName);
+                int pp = Integer.parseInt(mntEntry[1]);
+                int kp = Integer.parseInt(mntEntry[2]);
+                int mdtp = Integer.parseInt(mntEntry[3]) - 1;
+                int kpdtp = Integer.parseInt(mntEntry[4]) - 1;
+
+                Map<Integer, String> aptab = new HashMap<>();
+
+                int argIndex = 1;
+                for (int i = 0; i < pp && argIndex < tokens.length; i++, argIndex++) {
+                    aptab.put(i + 1, tokens[argIndex]);
+                }
+
+                Map<String, String> keywordParams = new LinkedHashMap<>();
+                for (int i = 0; i < kp; i++) {
+                    String[] kpEntry = kpdt.get(kpdtp + i);
+                    keywordParams.put(kpEntry[0], kpEntry[1]);
+                }
+
+                for (int i = argIndex; i < tokens.length; i++) {
+                    if (tokens[i].contains("=")) {
+                        String[] kv = tokens[i].split("=");
+                        keywordParams.put(kv[0], kv[1]);
+                    }
+                }
+
+                int paramIndex = pp + 1;
+                for (String val : keywordParams.values()) {
+                    aptab.put(paramIndex++, val);
+                }
+
+                int i = mdtp;
+                while (!mdt.get(i).equalsIgnoreCase("MEND")) {
+                    String[] bodyParts = mdt.get(i).trim().split("\\s+");
+                    for (String bp : bodyParts) {
+                        if (bp.matches("\\(P,\\d+\\)")) {
+                            int pNum = Integer.parseInt(bp.replaceAll("\\D+", ""));
+                            outputWriter.write(aptab.get(pNum) + "\t");
+                        } else {
+                            outputWriter.write(bp + "\t");
+                        }
+                    }
+                    outputWriter.write("\n");
+                    i++;
+                }
+            } else {
+                outputWriter.write(line + "\n");
+            }
+        }
+
+        mntReader.close();
+        mdtReader.close();
+        kpdtReader.close();
+        macroCallsReader.close();
+        outputWriter.close();
+
+        System.out.println("Macro Pass 2 completed — macros expanded.");
+    }
+}
